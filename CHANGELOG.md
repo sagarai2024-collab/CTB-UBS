@@ -7,9 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 
 ## [Unreleased]
 
+### Changed
+- **`pom.xml`** rewritten for **application** artifact (`api_CTB_integracao_application`, packaging=zip), distribution to release/snapshot Nexus repos.
+- **`settings.xml`** rewritten with `mirrors` + `servers` matching enterprise SSO upload pattern. Password injected from Vault at runtime.
+- **`.gitlab-ci.yml`** rewritten to mirror enterprise structure:
+  - `include:` shared CI templates for id_tokens.
+  - Container image: Maven 3.6.3.
+  - Stages: `validate → build → test → Zippingpackage → nexusupload → notify`.
+  - `.fetch-eva-secrets` + `.get-deploy-eva-credentials` hidden jobs (Vault auth via OIDC).
+  - `Zippingpackage` zips application files (`bin/`, `config/`, `scripts/` — not puppet manifests).
+  - `Nexus_Snapshot_Upload` / `Nexus_Release_Upload` jobs use `mvn deploy:deploy-file`.
+- All UBS-internal URLs replaced with `<PLACEHOLDER>` markers — to be substituted only inside enterprise environment.
+
 ### Added
-- `pom.xml` — Maven build with Spring Boot, JUnit 5, Mockito, JaCoCo, SonarQube, Nexus distribution.
-- `settings.xml` — Maven settings template with Nexus mirror + servers + Dev1 profile.
 - Initial repository scaffolding for CTB (Swiss bank project) server migration.
 - `README.md` with project overview, architecture diagram, tech stack, and quick links.
 - `azure-pipelines.yml` — Azure DevOps multi-stage pipeline (validate → build → test → publish → deploy → notify).

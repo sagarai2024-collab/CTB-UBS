@@ -1,173 +1,205 @@
 # =============================================================================
 #  CTB UBS — GitLab CI/CD Pipeline
-#  Project : CTB (Swiss Bank Project) — Server Migration
-#  Owner   : Sagarika (Technical Lead)
+#  Project  : CTB Integracao API — APPLICATION (not puppet module)
+#  Owner    : Sagarika
+#
+#  ⚠️  Placeholders intentional. Replace inside enterprise environment only:
+#      <COMPANY_REGISTRY>     → internal container registry hostname
+#      <NEXUS_WRITE_URL>      → internal Nexus write endpoint
+#      <NEXUS_GROUP_ID>       → e.g. com.ubs.ctb.deploy.application
+#      <NEXUS_ARTIFACT_ID>    → e.g. api_CTB_integracao_application
+#      <CI_TEMPLATE_PROJECT>  → shared CI templates project path
+#      <VAULT_URL>            → internal HashiCorp Vault server URL
+#      <VAULT_NAMESPACE>      → namespace assigned to your team
+#      <VAULT_AUTH_ROLE>      → vault auth role for this CI project
+#      <CRED_PATH>            → vault path holding Nexus upload credentials
 # =============================================================================
 
+# -----------------------------------------------------------------------------
+#  Shared CI templates (id_tokens, fetch-eva-secrets, etc.)
+# -----------------------------------------------------------------------------
+include:
+  - project: '<CI_TEMPLATE_PROJECT>'
+    file:
+      - 'gitlab-pipeline/.ci_id_tokens.yml'
+
+# -----------------------------------------------------------------------------
+#  Default container image — Maven 3.6.3 with JDK
+# -----------------------------------------------------------------------------
+image: <COMPANY_REGISTRY>/maven:3.6.3
+
+# -----------------------------------------------------------------------------
+#  Variables
+# -----------------------------------------------------------------------------
+variables:
+  MAVEN_CLI_OPTS: "-s settings.xml --batch-mode"
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+  # Nexus
+  nexus_write_url: '<NEXUS_WRITE_URL>/repository/'
+  nexus_group_id: '<NEXUS_GROUP_ID>'                                         # com.ubs.ctb.deploy.application
+  nexus_artifact_id: 'api_CTB_integracao_application'
+  artifact_name: 'api_CTB_integracao_application-1.0.0.${CI_PIPELINE_IID}.zip'
+
+  # Vault / EVA secrets
+  CRED_PATH: '<CRED_PATH>'
+  VAULT_SERVER_URL: '<VAULT_URL>'
+  VAULT_NAMESPACE: '<VAULT_NAMESPACE>'
+  VAULT_AUTH_ROLE: '<VAULT_AUTH_ROLE>'
+  VAULT_ID_TOKEN_AUD: '<VAULT_URL>'
+
+# -----------------------------------------------------------------------------
+#  Hidden jobs — secret retrieval (extended by other jobs)
+# -----------------------------------------------------------------------------
+.fetch-eva-secrets:
+  id_tokens:
+    VAULT_ID_TOKEN:
+      aud: ${VAULT_ID_TOKEN_AUD}
+    CI_JOB_JWT:
+      aud: ${VAULT_ID_TOKEN_AUD}
+
+.get-deploy-eva-credentials:
+  extends: .fetch-eva-secrets
+  before_script:
+    - echo "🔐 Fetching Nexus upload credentials from Vault"
+    - export password=$(vault kv get -field=password ${CRED_PATH})
+    - export username=$(vault kv get -field=username ${CRED_PATH})
+
+# -----------------------------------------------------------------------------
+#  Stages
+# -----------------------------------------------------------------------------
 stages:
   - validate
   - build
   - test
-  - package
-  - publish
-  - deploy
+  - Zippingpackage
+  - nexusupload
   - notify
 
-variables:
-  BUILD_CONFIGURATION: 'Release'
-  DOTNET_VERSION: '8.0'
-  NEXUS_URL: 'https://nexus.internal/repository/ctb-ubs-releases/'
-  NEXUS_NUGET_URL: 'https://nexus.internal/repository/nuget-hosted/'
-  ARTIFACT_NAME: 'ctb-ubs-app'
-  GIT_DEPTH: 0
-
-default:
-  image: mcr.microsoft.com/dotnet/sdk:8.0
-  tags:
-    - ctb-runner
-    - windows
-
-# -----------------------------------------------------------------------------
-#  STAGE 1: VALIDATE
-# -----------------------------------------------------------------------------
-lint:
+# =============================================================================
+#  STAGE 1: VALIDATE — lint, formatting
+# =============================================================================
+validate:
   stage: validate
   script:
-    - echo "🔍 Running dotnet format check"
-    - dotnet format --verify-no-changes
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "develop"
+    - echo "🔍 Validating application sources"
+    - mvn $MAVEN_CLI_OPTS validate
 
-sast:
-  stage: validate
-  script:
-    - echo "🛡️ Running SAST (SonarQube)"
-    - dotnet sonarscanner begin /k:"ctb-ubs" /d:sonar.login=$SONAR_TOKEN /d:sonar.host.url=$SONAR_HOST_URL
-    - dotnet build --configuration $BUILD_CONFIGURATION
-    - dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
-  allow_failure: false
-
-# -----------------------------------------------------------------------------
-#  STAGE 2: BUILD
-# -----------------------------------------------------------------------------
-build:
+# =============================================================================
+#  STAGE 2: BUILD — compile application
+# =============================================================================
+build_app:
   stage: build
   script:
-    - echo "🔨 Restoring from Nexus"
-    - dotnet nuget add source $NEXUS_NUGET_URL --name nexus --username $NEXUS_USER --password $NEXUS_PASS --store-password-in-clear-text
-    - dotnet restore
-    - echo "🔨 Building solution"
-    - dotnet build --configuration $BUILD_CONFIGURATION --no-restore
+    - echo "🔨 Building application"
+    - mvn $MAVEN_CLI_OPTS compile
   artifacts:
     paths:
-      - "**/bin/$BUILD_CONFIGURATION/"
+      - target/
     expire_in: 1 day
 
-# -----------------------------------------------------------------------------
-#  STAGE 3: TEST
-# -----------------------------------------------------------------------------
+# =============================================================================
+#  STAGE 3: TEST — unit tests
+# =============================================================================
 unit_tests:
   stage: test
   script:
     - echo "🧪 Running unit tests"
-    - dotnet test --configuration $BUILD_CONFIGURATION --no-build --logger "junit;LogFilePath=test-results.xml" --collect:"XPlat Code Coverage"
+    - mvn $MAVEN_CLI_OPTS test
   artifacts:
     when: always
     reports:
-      junit: '**/test-results.xml'
-      coverage_report:
-        coverage_format: cobertura
-        path: '**/coverage.cobertura.xml'
-  coverage: '/Total\s*\|\s*([\d\.]+)%/'
+      junit: '**/surefire-reports/TEST-*.xml'
 
-# -----------------------------------------------------------------------------
-#  STAGE 4: PACKAGE
-# -----------------------------------------------------------------------------
-package:
-  stage: package
+# =============================================================================
+#  STAGE 4: ZIPPINGPACKAGE — package application as ZIP
+#  (Application layout: bin/ + config/ + scripts/  — NOT puppet manifests)
+# =============================================================================
+Zippingpackage:
+  image: <COMPANY_REGISTRY>/ubs/ari/alpine-curl-zip:latest
+  stage: Zippingpackage
   script:
-    - echo "📦 Publishing app"
-    - dotnet publish --configuration $BUILD_CONFIGURATION --output ./artifacts --no-build
-    - echo "📦 Packing NuGet package"
-    - dotnet pack --configuration $BUILD_CONFIGURATION --output ./artifacts /p:Version=$CI_PIPELINE_IID
+    - mkdir -p api_CTB_integracao_application
+    - mkdir -p api_CTB_integracao_application/bin
+    - mkdir -p api_CTB_integracao_application/config
+    - mkdir -p api_CTB_integracao_application/scripts
+    - cp -r bin/*     api_CTB_integracao_application/bin     || true
+    - cp -r config/*  api_CTB_integracao_application/config  || true
+    - cp -r scripts/* api_CTB_integracao_application/scripts || true
+    - cp    target/*.jar api_CTB_integracao_application/bin  || true
+    - echo "📦 Zipping application package"
+    - cd api_CTB_integracao_application
+    - zip -r $CI_PROJECT_DIR/api_CTB_integracao_application-1.0.0.${CI_PIPELINE_IID}.zip *
+    - echo "✅ Created ZIP file"
   artifacts:
-    name: "$ARTIFACT_NAME-$CI_PIPELINE_IID"
     paths:
-      - artifacts/
+      - $artifact_name
     expire_in: 7 days
 
-# -----------------------------------------------------------------------------
-#  STAGE 5: PUBLISH TO NEXUS
-# -----------------------------------------------------------------------------
-publish_nexus:
-  stage: publish
-  script:
-    - echo "⬆️ Pushing to Nexus repository"
-    - |
-      for pkg in artifacts/*.nupkg; do
-        dotnet nuget push "$pkg" \
-          --source $NEXUS_URL \
-          --api-key $NEXUS_API_KEY \
-          --skip-duplicate
-      done
-    - echo "✅ Published to $NEXUS_URL"
-  rules:
-    - if: $CI_COMMIT_BRANCH == "main"
-    - if: $CI_COMMIT_BRANCH == "develop"
+# =============================================================================
+#  STAGE 5: NEXUS UPLOAD — push ZIP to Nexus via mvn deploy:deploy-file
+# =============================================================================
+.nexusupload:
+  image: <COMPANY_REGISTRY>/maven:3.6.3-jdk-8
+  stage: nexusupload
   needs:
-    - package
-
-# -----------------------------------------------------------------------------
-#  STAGE 6: DEPLOY → DEV1
-# -----------------------------------------------------------------------------
-deploy_dev1:
-  stage: deploy
-  environment:
-    name: dev1
-    url: https://api.dev1.ctb.internal
+    - Zippingpackage
+  extends: .get-deploy-eva-credentials
   script:
-    - echo "🔧 Applying Puppet config on dev1.ctb.internal"
-    - ssh dev1.ctb.internal "puppet agent --test --server puppet.ctb.internal"
+    - echo "⬆️  Uploading to Nexus → ${nexus_repo}"
+    - >
+      mvn deploy:deploy-file
+      -DgroupId=$nexus_group_id
+      -DartifactId=$nexus_artifact_id
+      -Dversion=$nexus_artifact_version
+      -Dpackaging=zip
+      -Dfile=$artifact_name
+      -DrepositoryId=$nexus_repo
+      -Durl=${nexus_write_url}${nexus_repo}/
+      -s settings.xml
+      -Dpassword=$password
 
-    - echo "📥 Installing application on Dev1"
-    - scp artifacts/ctb-ubs.msi dev1.ctb.internal:/tmp/
-    - ssh dev1.ctb.internal "msiexec /i /tmp/ctb-ubs.msi /quiet /norestart"
+# Snapshot upload — auto-trigger on feature branch (manual gate)
+Nexus_Snapshot_Upload:
+  extends: .nexusupload
+  variables:
+    nexus_repo: 'deploy-shared-071-snapshot'
+    nexus_artifact_version: '1.0.0.${CI_PIPELINE_IID}-SNAPSHOT'
+  only:
+    refs:
+      - AAF_ctb_integracao_api
+      - develop
+  when: manual
 
-    - echo "📊 Registering with ADT"
-    - |
-      curl -X POST https://adt.internal/api/deployments \
-        -H "Authorization: Bearer $ADT_TOKEN" \
-        -H "Content-Type: application/json" \
-        -d "{\"application\":\"ctb-ubs\",\"version\":\"$CI_PIPELINE_IID\",\"environment\":\"Dev1\"}"
+# Release upload — only from main branch (manual gate)
+Nexus_Release_Upload:
+  extends: .nexusupload
+  variables:
+    nexus_repo: 'deploy-shared-071-release'
+    nexus_artifact_version: '1.0.0.${CI_PIPELINE_IID}'
+  only:
+    refs:
+      - main
+      - master
+  when: manual
 
-    - echo "✅ Running smoke test"
-    - curl --fail --insecure https://api.dev1.ctb.internal/health
-  rules:
-    - if: $CI_COMMIT_BRANCH == "develop"
-      when: manual
-  needs:
-    - publish_nexus
-
-# -----------------------------------------------------------------------------
-#  STAGE 7: NOTIFY MERS
-# -----------------------------------------------------------------------------
+# =============================================================================
+#  STAGE 6: NOTIFY — MERS event
+# =============================================================================
 notify_mers:
   stage: notify
   script:
-    - echo "📣 Sending event to MERS"
-    - |
-      curl -X POST https://mers.internal/events \
-        -H "Content-Type: application/json" \
-        -d "{
-          \"source\":\"ctb-ubs-pipeline\",
-          \"build\":\"$CI_PIPELINE_IID\",
-          \"environment\":\"Dev1\",
-          \"status\":\"success\",
-          \"commit\":\"$CI_COMMIT_SHORT_SHA\"
-        }"
-  when: always
+    - echo "📣 Notifying MERS"
+    - >
+      curl -X POST <MERS_URL>/events
+      -H "Content-Type: application/json"
+      -d "{
+        \"source\":\"ctb-ubs-pipeline\",
+        \"build\":\"$CI_PIPELINE_IID\",
+        \"artifact\":\"$artifact_name\",
+        \"status\":\"success\"
+      }"
+  when: on_success
   rules:
-    - if: $CI_COMMIT_BRANCH == "develop"
     - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"

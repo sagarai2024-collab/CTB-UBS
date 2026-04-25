@@ -2,18 +2,18 @@
 <!--
   =============================================================================
    CTB UBS — Maven settings.xml
-   Project : CTB (Swiss Bank Project) — Server Migration
-   Owner   : Sagarika (Technical Lead)
+   Project : CTB Integracao API (Application)
+   Owner   : Sagarika
 
-   Place this file at:
+   Place at:
      • Linux/macOS : ~/.m2/settings.xml
      • Windows     : C:\Users\<user>\.m2\settings.xml
-     • Build agent : referenced via 'mvn -s settings.xml ...'
+     • Pipeline    : referenced via 'mvn -s settings.xml ...'
 
-   ⚠️  Do NOT commit real credentials.
-       Use environment variables or Maven master password encryption:
-         mvn --encrypt-master-password
-         mvn --encrypt-password <password>
+   ⚠️  Placeholders intentional — replace inside enterprise environment only.
+       <NEXUS_PUBLIC_URL>  → internal Nexus public/group repo URL
+       <SSO_USERNAME>      → Nexus upload service account username
+       ${password}         → injected at runtime via Vault / EVA secrets
   =============================================================================
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
@@ -21,127 +21,37 @@
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
                               https://maven.apache.org/xsd/settings-1.0.0.xsd">
 
-    <!-- Local Maven repository -->
-    <localRepository>${user.home}/.m2/repository</localRepository>
-
     <!-- ================================================================ -->
-    <!--  Servers — credentials for Nexus repositories                     -->
-    <!-- ================================================================ -->
-    <servers>
-
-        <!-- Nexus releases -->
-        <server>
-            <id>ctb-ubs-releases</id>
-            <username>${env.NEXUS_USER}</username>
-            <password>${env.NEXUS_PASS}</password>
-        </server>
-
-        <!-- Nexus snapshots -->
-        <server>
-            <id>ctb-ubs-snapshots</id>
-            <username>${env.NEXUS_USER}</username>
-            <password>${env.NEXUS_PASS}</password>
-        </server>
-
-        <!-- Nexus public (proxy + group) -->
-        <server>
-            <id>ctb-nexus</id>
-            <username>${env.NEXUS_USER}</username>
-            <password>${env.NEXUS_PASS}</password>
-        </server>
-
-        <!-- Plugin repository -->
-        <server>
-            <id>ctb-nexus-plugins</id>
-            <username>${env.NEXUS_USER}</username>
-            <password>${env.NEXUS_PASS}</password>
-        </server>
-
-    </servers>
-
-    <!-- ================================================================ -->
-    <!--  Mirrors — Route ALL Maven requests through Nexus                 -->
+    <!--  Mirrors — route Maven Central through internal Nexus             -->
     <!-- ================================================================ -->
     <mirrors>
         <mirror>
-            <id>ctb-nexus-mirror</id>
-            <name>CTB Nexus Mirror — All</name>
-            <url>https://nexus.internal/repository/maven-public/</url>
-            <mirrorOf>*,!ctb-ubs-releases,!ctb-ubs-snapshots</mirrorOf>
+            <id>public-library</id>
+            <name>Public Library</name>
+            <url><NEXUS_PUBLIC_URL>/nexus/content/repositories/public/</url>
+            <mirrorOf>central</mirrorOf>
         </mirror>
     </mirrors>
 
     <!-- ================================================================ -->
-    <!--  Profiles                                                         -->
+    <!--  Servers — credentials for Nexus deploy targets                   -->
     <!-- ================================================================ -->
-    <profiles>
+    <servers>
 
-        <!-- Default profile — points everything at Nexus -->
-        <profile>
-            <id>ctb-nexus</id>
+        <!-- Snapshot deploy server -->
+        <server>
+            <id>deploy-shared-071-snapshot</id>
+            <username><SSO_USERNAME></username>
+            <password>${password}</password>
+        </server>
 
-            <repositories>
-                <repository>
-                    <id>ctb-nexus</id>
-                    <name>CTB Nexus Public</name>
-                    <url>https://nexus.internal/repository/maven-public/</url>
-                    <releases>
-                        <enabled>true</enabled>
-                    </releases>
-                    <snapshots>
-                        <enabled>true</enabled>
-                        <updatePolicy>daily</updatePolicy>
-                    </snapshots>
-                </repository>
-            </repositories>
+        <!-- Release deploy server -->
+        <server>
+            <id>deploy-shared-071-release</id>
+            <username><SSO_USERNAME></username>
+            <password>${password}</password>
+        </server>
 
-            <pluginRepositories>
-                <pluginRepository>
-                    <id>ctb-nexus-plugins</id>
-                    <name>CTB Nexus Plugin Public</name>
-                    <url>https://nexus.internal/repository/maven-public/</url>
-                    <releases>
-                        <enabled>true</enabled>
-                    </releases>
-                    <snapshots>
-                        <enabled>false</enabled>
-                    </snapshots>
-                </pluginRepository>
-            </pluginRepositories>
-
-            <properties>
-                <sonar.host.url>https://sonar.internal</sonar.host.url>
-            </properties>
-        </profile>
-
-        <!-- Dev1 environment overrides -->
-        <profile>
-            <id>dev1</id>
-            <properties>
-                <env>dev1</env>
-                <api.url>https://api.dev1.ctb.internal</api.url>
-                <agnes.realm>CTB.INTERNAL</agnes.realm>
-                <ags.endpoint>https://ags.internal/v1/validate</ags.endpoint>
-                <gsr.endpoint>https://gsr.internal/v1/lookup</gsr.endpoint>
-                <mers.endpoint>https://mers.internal/events</mers.endpoint>
-            </properties>
-        </profile>
-
-    </profiles>
-
-    <!-- ================================================================ -->
-    <!--  Active profiles                                                  -->
-    <!-- ================================================================ -->
-    <activeProfiles>
-        <activeProfile>ctb-nexus</activeProfile>
-    </activeProfiles>
-
-    <!-- ================================================================ -->
-    <!--  Plugin groups                                                    -->
-    <!-- ================================================================ -->
-    <pluginGroups>
-        <pluginGroup>org.sonarsource.scanner.maven</pluginGroup>
-        <pluginGroup>org.springframework.boot</pluginGroup>
-    </pluginGroups>
+    </servers>
 
 </settings>
