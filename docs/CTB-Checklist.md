@@ -1,7 +1,6 @@
-# CTB Work Item Checklist — UBS Server Migration
+# CTB Work Item Checklist
 
-**Project:** UBS Server Migration (Cut To Build)
-**Team:** Wipro Technical Delivery
+**Project:** CTB (Swiss Bank Project)
 **Last Updated:** 2026-04-25
 
 ---

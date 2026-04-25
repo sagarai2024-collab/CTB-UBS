@@ -1,15 +1,14 @@
 # CTB UBS
 
-**Client:** UBS (Union Bank of Switzerland)
-**Team:** Wipro Technical Delivery
+**Project:** CTB (Swiss Bank Project)
 **Platform:** Azure DevOps / GitLab
-**Project Type:** Server Migration — Cut To Build (CTB)
+**Type:** Server Migration — Cut To Build (CTB)
 
 ---
 
 ## Overview
 
-This repository contains all artefacts, configuration, and documentation for the UBS server migration project delivered by Wipro. The scope covers a full Cut-To-Build (CTB) lifecycle — from initial environment access and three-tier architecture conversion, through CI/CD pipeline setup, Nexus artifact publishing, DNS/SSL provisioning, and deployment to the Dev1 server.
+This repository contains all artefacts, configuration, and documentation for the CTB (Swiss bank project) server migration. The scope covers a full Cut-To-Build (CTB) lifecycle — from initial environment access and three-tier architecture conversion, through CI/CD pipeline setup, Nexus artifact publishing, DNS/SSL provisioning, and deployment to the Dev1 server.
 
 ---
 
@@ -31,7 +30,7 @@ This repository contains all artefacts, configuration, and documentation for the
 ## Repository Structure
 
 ```
-UBS-Migration-Docs/
+CTB-UBS/
 ├── README.md                  ← This file
 └── docs/
     └── CTB-Checklist.md       ← Full CTB work item tracker (16 items)
@@ -75,5 +74,4 @@ Before starting work, ensure the following access and tools are in place:
 
 | Role | Name |
 |---|---|
-| Technical Lead | Sagarika (Wipro) |
-| Client | UBS Infrastructure Team |
+| Technical Lead | Sagarika |
