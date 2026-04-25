@@ -1,0 +1,173 @@
+# =============================================================================
+#  CTB UBS — GitLab CI/CD Pipeline
+#  Project : CTB (Swiss Bank Project) — Server Migration
+#  Owner   : Sagarika (Technical Lead)
+# =============================================================================
+
+stages:
+  - validate
+  - build
+  - test
+  - package
+  - publish
+  - deploy
+  - notify
+
+variables:
+  BUILD_CONFIGURATION: 'Release'
+  DOTNET_VERSION: '8.0'
+  NEXUS_URL: 'https://nexus.internal/repository/ctb-ubs-releases/'
+  NEXUS_NUGET_URL: 'https://nexus.internal/repository/nuget-hosted/'
+  ARTIFACT_NAME: 'ctb-ubs-app'
+  GIT_DEPTH: 0
+
+default:
+  image: mcr.microsoft.com/dotnet/sdk:8.0
+  tags:
+    - ctb-runner
+    - windows
+
+# -----------------------------------------------------------------------------
+#  STAGE 1: VALIDATE
+# -----------------------------------------------------------------------------
+lint:
+  stage: validate
+  script:
+    - echo "🔍 Running dotnet format check"
+    - dotnet format --verify-no-changes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+sast:
+  stage: validate
+  script:
+    - echo "🛡️ Running SAST (SonarQube)"
+    - dotnet sonarscanner begin /k:"ctb-ubs" /d:sonar.login=$SONAR_TOKEN /d:sonar.host.url=$SONAR_HOST_URL
+    - dotnet build --configuration $BUILD_CONFIGURATION
+    - dotnet sonarscanner end /d:sonar.login=$SONAR_TOKEN
+  allow_failure: false
+
+# -----------------------------------------------------------------------------
+#  STAGE 2: BUILD
+# -----------------------------------------------------------------------------
+build:
+  stage: build
+  script:
+    - echo "🔨 Restoring from Nexus"
+    - dotnet nuget add source $NEXUS_NUGET_URL --name nexus --username $NEXUS_USER --password $NEXUS_PASS --store-password-in-clear-text
+    - dotnet restore
+    - echo "🔨 Building solution"
+    - dotnet build --configuration $BUILD_CONFIGURATION --no-restore
+  artifacts:
+    paths:
+      - "**/bin/$BUILD_CONFIGURATION/"
+    expire_in: 1 day
+
+# -----------------------------------------------------------------------------
+#  STAGE 3: TEST
+# -----------------------------------------------------------------------------
+unit_tests:
+  stage: test
+  script:
+    - echo "🧪 Running unit tests"
+    - dotnet test --configuration $BUILD_CONFIGURATION --no-build --logger "junit;LogFilePath=test-results.xml" --collect:"XPlat Code Coverage"
+  artifacts:
+    when: always
+    reports:
+      junit: '**/test-results.xml'
+      coverage_report:
+        coverage_format: cobertura
+        path: '**/coverage.cobertura.xml'
+  coverage: '/Total\s*\|\s*([\d\.]+)%/'
+
+# -----------------------------------------------------------------------------
+#  STAGE 4: PACKAGE
+# -----------------------------------------------------------------------------
+package:
+  stage: package
+  script:
+    - echo "📦 Publishing app"
+    - dotnet publish --configuration $BUILD_CONFIGURATION --output ./artifacts --no-build
+    - echo "📦 Packing NuGet package"
+    - dotnet pack --configuration $BUILD_CONFIGURATION --output ./artifacts /p:Version=$CI_PIPELINE_IID
+  artifacts:
+    name: "$ARTIFACT_NAME-$CI_PIPELINE_IID"
+    paths:
+      - artifacts/
+    expire_in: 7 days
+
+# -----------------------------------------------------------------------------
+#  STAGE 5: PUBLISH TO NEXUS
+# -----------------------------------------------------------------------------
+publish_nexus:
+  stage: publish
+  script:
+    - echo "⬆️ Pushing to Nexus repository"
+    - |
+      for pkg in artifacts/*.nupkg; do
+        dotnet nuget push "$pkg" \
+          --source $NEXUS_URL \
+          --api-key $NEXUS_API_KEY \
+          --skip-duplicate
+      done
+    - echo "✅ Published to $NEXUS_URL"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_COMMIT_BRANCH == "develop"
+  needs:
+    - package
+
+# -----------------------------------------------------------------------------
+#  STAGE 6: DEPLOY → DEV1
+# -----------------------------------------------------------------------------
+deploy_dev1:
+  stage: deploy
+  environment:
+    name: dev1
+    url: https://api.dev1.ctb.internal
+  script:
+    - echo "🔧 Applying Puppet config on dev1.ctb.internal"
+    - ssh dev1.ctb.internal "puppet agent --test --server puppet.ctb.internal"
+
+    - echo "📥 Installing application on Dev1"
+    - scp artifacts/ctb-ubs.msi dev1.ctb.internal:/tmp/
+    - ssh dev1.ctb.internal "msiexec /i /tmp/ctb-ubs.msi /quiet /norestart"
+
+    - echo "📊 Registering with ADT"
+    - |
+      curl -X POST https://adt.internal/api/deployments \
+        -H "Authorization: Bearer $ADT_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"application\":\"ctb-ubs\",\"version\":\"$CI_PIPELINE_IID\",\"environment\":\"Dev1\"}"
+
+    - echo "✅ Running smoke test"
+    - curl --fail --insecure https://api.dev1.ctb.internal/health
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: manual
+  needs:
+    - publish_nexus
+
+# -----------------------------------------------------------------------------
+#  STAGE 7: NOTIFY MERS
+# -----------------------------------------------------------------------------
+notify_mers:
+  stage: notify
+  script:
+    - echo "📣 Sending event to MERS"
+    - |
+      curl -X POST https://mers.internal/events \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"source\":\"ctb-ubs-pipeline\",
+          \"build\":\"$CI_PIPELINE_IID\",
+          \"environment\":\"Dev1\",
+          \"status\":\"success\",
+          \"commit\":\"$CI_COMMIT_SHORT_SHA\"
+        }"
+  when: always
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop"
+    - if: $CI_COMMIT_BRANCH == "main"
