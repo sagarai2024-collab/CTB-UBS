@@ -1,15 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   =============================================================================
-   CTB UBS — Application POM
-   Project    : CTB Integracao API (Application)
+   CTB UBS — POM for .NET Windows Application
+   Project    : CTB Integracao API (.NET / Windows)
    Owner      : Sagarika
-   ARTIFACT   : api_CTB_integracao_application (NOT puppet module)
+   ARTIFACT   : CTB_integracao_dotnet_app  (a packaged .NET Windows app)
 
-   ⚠️  Placeholders are intentional. Replace inside enterprise environment only.
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  WHY MAVEN FOR A .NET PROJECT?                                       │
+   │                                                                      │
+   │  This pom.xml is NOT used to compile .NET code.                      │
+   │  Compilation is done by `dotnet build` / MSBuild in the pipeline.    │
+   │                                                                      │
+   │  Maven is used ONLY as the upload mechanism, because Nexus is a      │
+   │  Maven-style repository. The pipeline runs:                          │
+   │                                                                      │
+   │     mvn deploy:deploy-file \                                         │
+   │       -DgroupId=...        \                                         │
+   │       -DartifactId=...     \                                         │
+   │       -Dversion=...        \                                         │
+   │       -Dpackaging=zip      \                                         │
+   │       -Dfile=ctb-app.zip                                             │
+   │                                                                      │
+   │  …to push the ZIP'd .NET output (containing the MSI / EXE / DLLs)    │
+   │  into the enterprise Nexus repository.                               │
+   └──────────────────────────────────────────────────────────────────────┘
+
+   ⚠️  Placeholders intentional. Replace inside enterprise environment only.
        <NEXUS_WRITE_URL>  →  internal Nexus write endpoint
-       <NEXUS_REPO_REL>   →  release   repo id (e.g. deploy-shared-071-release)
-       <NEXUS_REPO_SNAP>  →  snapshot  repo id (e.g. deploy-shared-071-snapshot)
   =============================================================================
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -20,15 +38,19 @@
     <modelVersion>4.0.0</modelVersion>
 
     <!-- ================================================================ -->
-    <!--  Coordinates — APPLICATION (not puppet module)                    -->
+    <!--  Coordinates — .NET Windows APPLICATION (packaged as ZIP)         -->
     <!-- ================================================================ -->
-    <groupId>com.ubs.ctb.deploy.application</groupId>           <!-- Nexus Group ID -->
-    <artifactId>api_CTB_integracao_application</artifactId>     <!-- Artifact name  -->
+    <groupId>com.ubs.ctb.deploy.application</groupId>           <!-- Nexus Group ID    -->
+    <artifactId>CTB_integracao_dotnet_app</artifactId>          <!-- Artifact name     -->
     <version>1.0.0-SNAPSHOT</version>
-    <packaging>zip</packaging>
+    <packaging>zip</packaging>                                  <!-- ZIP of bin/ + msi -->
 
-    <name>CTB Integracao Application</name>
-    <description>CTB Integracao API — application package (Swiss bank project)</description>
+    <name>CTB Integracao .NET Windows Application</name>
+    <description>
+        CTB Integracao — .NET Windows application package (Swiss bank project).
+        ZIP contents: compiled binaries (bin/), MSI installer, configuration,
+        deployment scripts. Built by dotnet/MSBuild; uploaded via Maven.
+    </description>
 
     <!-- ================================================================ -->
     <!--  Distribution Management — Nexus targets                          -->
@@ -48,5 +70,14 @@
         </snapshotRepository>
 
     </distributionManagement>
+
+    <!--
+      =================================================================
+       NO <dependencies> SECTION
+      =================================================================
+       This is intentional. Java/Maven dependencies are not needed —
+       the .NET app's NuGet packages are managed via `nuget.config`
+       in the same repo, separately from this pom.xml.
+      -->
 
 </project>

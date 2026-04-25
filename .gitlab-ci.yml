@@ -1,13 +1,18 @@
 # =============================================================================
 #  CTB UBS — GitLab CI/CD Pipeline
-#  Project  : CTB Integracao API — APPLICATION (not puppet module)
+#  Project  : CTB Integracao API — .NET Windows Application
 #  Owner    : Sagarika
+#
+#  Build flow:
+#    1. .NET build  →  dotnet (MSBuild) compiles the Windows app
+#    2. Package     →  ZIP the bin/Release output (+ MSI / EXE / config)
+#    3. Upload      →  Maven `deploy:deploy-file` pushes ZIP to Nexus
 #
 #  ⚠️  Placeholders intentional. Replace inside enterprise environment only:
 #      <COMPANY_REGISTRY>     → internal container registry hostname
 #      <NEXUS_WRITE_URL>      → internal Nexus write endpoint
 #      <NEXUS_GROUP_ID>       → e.g. com.ubs.ctb.deploy.application
-#      <NEXUS_ARTIFACT_ID>    → e.g. api_CTB_integracao_application
+#      <NEXUS_ARTIFACT_ID>    → e.g. CTB_integracao_dotnet_app
 #      <CI_TEMPLATE_PROJECT>  → shared CI templates project path
 #      <VAULT_URL>            → internal HashiCorp Vault server URL
 #      <VAULT_NAMESPACE>      → namespace assigned to your team
@@ -24,22 +29,23 @@ include:
       - 'gitlab-pipeline/.ci_id_tokens.yml'
 
 # -----------------------------------------------------------------------------
-#  Default container image — Maven 3.6.3 with JDK
-# -----------------------------------------------------------------------------
-image: <COMPANY_REGISTRY>/maven:3.6.3
-
-# -----------------------------------------------------------------------------
 #  Variables
 # -----------------------------------------------------------------------------
 variables:
+  # .NET
+  DOTNET_VERSION: '8.0'
+  BUILD_CONFIGURATION: 'Release'
+  SOLUTION_FILE: 'CTB.Integracao.API.sln'
+
+  # Maven (used only for Nexus upload)
   MAVEN_CLI_OPTS: "-s settings.xml --batch-mode"
   MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
 
   # Nexus
   nexus_write_url: '<NEXUS_WRITE_URL>/repository/'
-  nexus_group_id: '<NEXUS_GROUP_ID>'                                         # com.ubs.ctb.deploy.application
-  nexus_artifact_id: 'api_CTB_integracao_application'
-  artifact_name: 'api_CTB_integracao_application-1.0.0.${CI_PIPELINE_IID}.zip'
+  nexus_group_id: '<NEXUS_GROUP_ID>'                                  # com.ubs.ctb.deploy.application
+  nexus_artifact_id: 'CTB_integracao_dotnet_app'
+  artifact_name: 'CTB_integracao_dotnet_app-1.0.0.${CI_PIPELINE_IID}.zip'
 
   # Vault / EVA secrets
   CRED_PATH: '<CRED_PATH>'
@@ -49,7 +55,7 @@ variables:
   VAULT_ID_TOKEN_AUD: '<VAULT_URL>'
 
 # -----------------------------------------------------------------------------
-#  Hidden jobs — secret retrieval (extended by other jobs)
+#  Hidden jobs — secret retrieval (extended by upload jobs)
 # -----------------------------------------------------------------------------
 .fetch-eva-secrets:
   id_tokens:
@@ -77,67 +83,84 @@ stages:
   - notify
 
 # =============================================================================
-#  STAGE 1: VALIDATE — lint, formatting
+#  STAGE 1: VALIDATE — restore + format check (.NET)
 # =============================================================================
-validate:
+validate_dotnet:
+  image: <COMPANY_REGISTRY>/dotnet/sdk:8.0
   stage: validate
   script:
-    - echo "🔍 Validating application sources"
-    - mvn $MAVEN_CLI_OPTS validate
+    - echo "🔍 Restoring NuGet packages from Nexus"
+    - dotnet restore $SOLUTION_FILE --configfile nuget.config
+    - echo "🔍 Verifying code format"
+    - dotnet format $SOLUTION_FILE --verify-no-changes
 
 # =============================================================================
-#  STAGE 2: BUILD — compile application
+#  STAGE 2: BUILD — dotnet build (MSBuild) for the Windows application
 # =============================================================================
-build_app:
+build_dotnet:
+  image: <COMPANY_REGISTRY>/dotnet/sdk:8.0
   stage: build
   script:
-    - echo "🔨 Building application"
-    - mvn $MAVEN_CLI_OPTS compile
+    - echo "🔨 Building .NET Windows application"
+    - dotnet build $SOLUTION_FILE --configuration $BUILD_CONFIGURATION --no-restore
+    - echo "📦 Publishing app (self-contained)"
+    - dotnet publish $SOLUTION_FILE --configuration $BUILD_CONFIGURATION --output ./publish --no-build
   artifacts:
     paths:
-      - target/
+      - publish/
+      - "**/bin/$BUILD_CONFIGURATION/"
     expire_in: 1 day
 
 # =============================================================================
-#  STAGE 3: TEST — unit tests
+#  STAGE 3: TEST — unit tests (.NET)
 # =============================================================================
 unit_tests:
+  image: <COMPANY_REGISTRY>/dotnet/sdk:8.0
   stage: test
   script:
-    - echo "🧪 Running unit tests"
-    - mvn $MAVEN_CLI_OPTS test
+    - echo "🧪 Running .NET unit tests"
+    - dotnet test $SOLUTION_FILE --configuration $BUILD_CONFIGURATION --no-build
+              --logger "junit;LogFilePath=test-results.xml"
+              --collect:"XPlat Code Coverage"
   artifacts:
     when: always
     reports:
-      junit: '**/surefire-reports/TEST-*.xml'
+      junit: '**/test-results.xml'
 
 # =============================================================================
-#  STAGE 4: ZIPPINGPACKAGE — package application as ZIP
-#  (Application layout: bin/ + config/ + scripts/  — NOT puppet manifests)
+#  STAGE 4: ZIPPINGPACKAGE — package .NET app as ZIP
 # =============================================================================
 Zippingpackage:
   image: <COMPANY_REGISTRY>/ubs/ari/alpine-curl-zip:latest
   stage: Zippingpackage
+  needs:
+    - build_dotnet
   script:
-    - mkdir -p api_CTB_integracao_application
-    - mkdir -p api_CTB_integracao_application/bin
-    - mkdir -p api_CTB_integracao_application/config
-    - mkdir -p api_CTB_integracao_application/scripts
-    - cp -r bin/*     api_CTB_integracao_application/bin     || true
-    - cp -r config/*  api_CTB_integracao_application/config  || true
-    - cp -r scripts/* api_CTB_integracao_application/scripts || true
-    - cp    target/*.jar api_CTB_integracao_application/bin  || true
-    - echo "📦 Zipping application package"
-    - cd api_CTB_integracao_application
-    - zip -r $CI_PROJECT_DIR/api_CTB_integracao_application-1.0.0.${CI_PIPELINE_IID}.zip *
-    - echo "✅ Created ZIP file"
+    - mkdir -p CTB_integracao_dotnet_app
+    - mkdir -p CTB_integracao_dotnet_app/bin
+    - mkdir -p CTB_integracao_dotnet_app/config
+    - mkdir -p CTB_integracao_dotnet_app/scripts
+    # Copy compiled .NET output
+    - cp -r publish/* CTB_integracao_dotnet_app/bin/ || true
+    # Copy MSI installer if present
+    - cp installer/*.msi CTB_integracao_dotnet_app/bin/ || true
+    # Copy app config + deploy scripts
+    - cp -r config/* CTB_integracao_dotnet_app/config/ || true
+    - cp -r scripts/* CTB_integracao_dotnet_app/scripts/ || true
+    # Optional: include PowerShell deployment helper
+    - cp windows_service.ps1 CTB_integracao_dotnet_app/scripts/ || true
+    - echo "📦 Zipping .NET application package"
+    - cd CTB_integracao_dotnet_app
+    - zip -r $CI_PROJECT_DIR/$artifact_name *
+    - echo "✅ Created $artifact_name"
   artifacts:
     paths:
       - $artifact_name
     expire_in: 7 days
 
 # =============================================================================
-#  STAGE 5: NEXUS UPLOAD — push ZIP to Nexus via mvn deploy:deploy-file
+#  STAGE 5: NEXUS UPLOAD — push ZIP via Maven deploy:deploy-file
+#  (Only step where Maven is used — purely as the upload mechanism)
 # =============================================================================
 .nexusupload:
   image: <COMPANY_REGISTRY>/maven:3.6.3-jdk-8
@@ -146,7 +169,7 @@ Zippingpackage:
     - Zippingpackage
   extends: .get-deploy-eva-credentials
   script:
-    - echo "⬆️  Uploading to Nexus → ${nexus_repo}"
+    - echo "⬆️  Uploading .NET ZIP to Nexus → ${nexus_repo}"
     - >
       mvn deploy:deploy-file
       -DgroupId=$nexus_group_id
@@ -159,7 +182,7 @@ Zippingpackage:
       -s settings.xml
       -Dpassword=$password
 
-# Snapshot upload — auto-trigger on feature branch (manual gate)
+# Snapshot upload — develop / feature branch (manual gate)
 Nexus_Snapshot_Upload:
   extends: .nexusupload
   variables:
@@ -171,7 +194,7 @@ Nexus_Snapshot_Upload:
       - develop
   when: manual
 
-# Release upload — only from main branch (manual gate)
+# Release upload — main branch (manual gate)
 Nexus_Release_Upload:
   extends: .nexusupload
   variables:

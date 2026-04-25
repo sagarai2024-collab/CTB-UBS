@@ -2,8 +2,22 @@
 <!--
   =============================================================================
    CTB UBS — Maven settings.xml
-   Project : CTB Integracao API (Application)
+   Project : CTB Integracao .NET Windows Application
    Owner   : Sagarika
+
+   ┌──────────────────────────────────────────────────────────────────────┐
+   │  WHY MAVEN settings.xml FOR A .NET PROJECT?                          │
+   │                                                                      │
+   │  This file authenticates Maven against the enterprise Nexus when     │
+   │  the pipeline runs `mvn deploy:deploy-file` to upload the packaged   │
+   │  .NET application (ZIP) to Nexus. The .NET build itself uses         │
+   │  `dotnet build` and authenticates to the NuGet feed via              │
+   │  nuget.config — NOT this file.                                       │
+   │                                                                      │
+   │  In short:                                                           │
+   │    • settings.xml  → upload .NET ZIP to Nexus (Maven repos)          │
+   │    • nuget.config  → restore .NET dependencies from Nexus (NuGet)    │
+   └──────────────────────────────────────────────────────────────────────┘
 
    Place at:
      • Linux/macOS : ~/.m2/settings.xml
@@ -11,9 +25,9 @@
      • Pipeline    : referenced via 'mvn -s settings.xml ...'
 
    ⚠️  Placeholders intentional — replace inside enterprise environment only.
-       <NEXUS_PUBLIC_URL>  → internal Nexus public/group repo URL
-       <SSO_USERNAME>      → Nexus upload service account username
-       ${password}         → injected at runtime via Vault / EVA secrets
+       <NEXUS_PUBLIC_URL>  →  internal Nexus public/group repo URL
+       <SSO_USERNAME>      →  Nexus upload service account username
+       ${password}         →  injected at runtime via Vault / EVA secrets
   =============================================================================
 -->
 <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
@@ -22,7 +36,9 @@
                               https://maven.apache.org/xsd/settings-1.0.0.xsd">
 
     <!-- ================================================================ -->
-    <!--  Mirrors — route Maven Central through internal Nexus             -->
+    <!--  Mirrors — block any default Maven Central lookups                -->
+    <!--  (a .NET-only project shouldn't pull from Maven Central anyway,   -->
+    <!--   but this enforces the policy at the build-tool level)           -->
     <!-- ================================================================ -->
     <mirrors>
         <mirror>
@@ -35,17 +51,18 @@
 
     <!-- ================================================================ -->
     <!--  Servers — credentials for Nexus deploy targets                   -->
+    <!--  (Used by mvn deploy:deploy-file when pushing the .NET ZIP)       -->
     <!-- ================================================================ -->
     <servers>
 
-        <!-- Snapshot deploy server -->
+        <!-- Snapshot deploy server (develop / feature branches) -->
         <server>
             <id>deploy-shared-071-snapshot</id>
             <username><SSO_USERNAME></username>
             <password>${password}</password>
         </server>
 
-        <!-- Release deploy server -->
+        <!-- Release deploy server (main / master) -->
         <server>
             <id>deploy-shared-071-release</id>
             <username><SSO_USERNAME></username>

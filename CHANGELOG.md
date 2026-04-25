@@ -8,9 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 ## [Unreleased]
 
 ### Changed
-- **`pom.xml`** rewritten for **application** artifact (`api_CTB_integracao_application`, packaging=zip), distribution to release/snapshot Nexus repos.
-- **`settings.xml`** rewritten with `mirrors` + `servers` matching enterprise SSO upload pattern. Password injected from Vault at runtime.
-- **`.gitlab-ci.yml`** rewritten to mirror enterprise structure:
+- **`pom.xml`** clarified for **.NET Windows application** packaging — Maven used only as the upload mechanism to Nexus, not for compilation. Artifact: `CTB_integracao_dotnet_app` (packaging=zip).
+- **`settings.xml`** updated with comments explaining its role in a .NET project (authenticates `mvn deploy:deploy-file` to push the .NET ZIP to Nexus). NuGet restore is handled separately via `nuget.config`.
+- **`.gitlab-ci.yml`** build stages now use `dotnet` (validate/build/test) instead of `mvn`. Maven is invoked only at the `nexusupload` stage. Build flow: `dotnet restore → build → publish → zip (.NET output + MSI + config) → mvn deploy:deploy-file`.
+- **`.gitlab-ci.yml`** mirrors enterprise structure:
   - `include:` shared CI templates for id_tokens.
   - Container image: Maven 3.6.3.
   - Stages: `validate → build → test → Zippingpackage → nexusupload → notify`.
