@@ -8,6 +8,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Sem
 ## [Unreleased]
 
 ### Added
+- `pom.xml` — Maven build with Spring Boot, JUnit 5, Mockito, JaCoCo, SonarQube, Nexus distribution.
+- `settings.xml` — Maven settings template with Nexus mirror + servers + Dev1 profile.
 - Initial repository scaffolding for CTB (Swiss bank project) server migration.
 - `README.md` with project overview, architecture diagram, tech stack, and quick links.
 - `azure-pipelines.yml` — Azure DevOps multi-stage pipeline (validate → build → test → publish → deploy → notify).

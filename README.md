@@ -105,8 +105,13 @@ flowchart TB
 </tr>
 <tr>
 <td>💻 Application</td>
-<td><code>.NET</code> Windows Application</td>
-<td>Client desktop runtime</td>
+<td>Java (Spring Boot) + <code>.NET</code> Windows client</td>
+<td>Server services + desktop client</td>
+</tr>
+<tr>
+<td>🏗️ Build</td>
+<td>Maven · MSBuild / dotnet</td>
+<td>JVM + .NET artifact build</td>
 </tr>
 <tr>
 <td>🏛️ Architecture</td>
@@ -158,6 +163,8 @@ flowchart TB
 CTB-UBS/
 ├── 📄 README.md                    ← You are here
 ├── 📄 CHANGELOG.md                 ← Release history
+├── 📄 pom.xml                      ← Maven Project Object Model
+├── 📄 settings.xml                 ← Maven settings (Nexus config)
 ├── 📄 azure-pipelines.yml          ← Azure DevOps pipeline definition
 ├── 📄 .gitlab-ci.yml               ← GitLab CI pipeline definition
 ├── 📄 .gitignore
@@ -236,24 +243,37 @@ flowchart LR
 ✓ Dev server access (item #8)
 ```
 
-### Local Build
+### Local Build (Maven / Java)
 
 ```bash
 # 1. Clone the repository
 git clone <repo-url>
 cd CTB-UBS
 
-# 2. Restore dependencies (from Nexus feed)
+# 2. Copy settings.xml to your Maven home (one-time)
+cp settings.xml ~/.m2/settings.xml      # Linux / macOS
+copy settings.xml %USERPROFILE%\.m2\settings.xml   # Windows
+
+# 3. Set Nexus credentials (env vars consumed by settings.xml)
+export NEXUS_USER=<your-nexus-user>
+export NEXUS_PASS=<your-nexus-password>
+
+# 4. Build (resolves from Nexus, runs tests, packages JAR)
+mvn clean install
+
+# 5. Run unit tests only
+mvn test
+
+# 6. Deploy snapshot to Nexus
+mvn deploy -P dev1
+```
+
+### Local Build (.NET — Windows app component)
+
+```bash
 dotnet restore --source https://nexus.internal/repository/nuget-hosted/
-
-# 3. Build
 dotnet build --configuration Release
-
-# 4. Run unit tests
-dotnet test --no-build --verbosity normal
-
-# 5. Package
-dotnet publish -c Release -o ./artifacts
+dotnet test --no-build
 ```
 
 ### First-Time Pipeline Setup
