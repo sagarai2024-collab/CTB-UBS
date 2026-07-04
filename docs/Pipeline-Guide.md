@@ -76,7 +76,7 @@ Configure these in Azure DevOps **Library → Variable Groups** (`ctb-ubs-secret
 - **Runner tag:** `ctb-runner`, `windows`
 - **Image:** `mcr.microsoft.com/dotnet/sdk:8.0`
 
-Agent installation on Dev1 covered in **CTB item #12**.
+Agent installation on Dev1 covered in **CTB item #13**.
 
 ---
 
@@ -177,7 +177,8 @@ flowchart TD
 
 ### SSL handshake error on smoke test
 - Confirm cert is installed at `/etc/ssl/ctb/api.crt`
-- DNS entry `api.dev1.ctb.internal` must resolve (item **#11**)
+- DNS entry `api.dev1.ctb.internal` must resolve (item **#12**)
+- SSL certificate **fingerprint (thumbprint)** must be registered in the binding config (item **#12**)
 - Check cert chain: `openssl s_client -connect api.dev1.ctb.internal:443 -showcerts`
 
 ### ADT registration returns 401

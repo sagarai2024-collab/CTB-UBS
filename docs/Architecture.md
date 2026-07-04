@@ -173,18 +173,21 @@ flowchart LR
 
 | Boundary | Control | Item Ref |
 |---|---|---|
-| Client ↔ Presentation | TLS 1.2+, enterprise SSL cert | #11 |
-| Presentation ↔ Business | mTLS, service mesh | #11 |
+| Client ↔ Presentation | TLS 1.2+, enterprise SSL cert (fingerprint registered) | #12 |
+| Presentation ↔ Business | mTLS, service mesh | #12 |
 | Business ↔ Data | Encrypted DB connection (TDS-over-TLS) | — |
-| All → MERS | Outbound HTTPS, service account | #16 |
-| Pipeline → Nexus | Token auth, RBAC | #10 |
-| Pipeline → Dev1 | Puppet agent, signed manifests | #9, #12 |
+| All → MERS | Outbound HTTPS, app-team token | #18 |
+| Pipeline → Nexus | Token auth, RBAC | #11 |
+| Pipeline → Dev1 | Puppet agent, signed manifests | #9, #13 |
 
 ---
 
 ## 7. Configuration Management — Puppet
 
-Puppet manifests live in a sibling repo (`ctb-ubs-puppet`) and are applied automatically by the pipeline (item #9):
+Puppet manifests live in a sibling repo (`ctb-ubs-puppet`) and are applied automatically by the pipeline (item #9).
+
+> ⚠️ **Module content rule (item #10):** the Puppet module carries **server configuration only**. Do not upload application services, `.cs` source files, or other `.sln` solution paths into the module — application binaries are always pulled from Nexus.
+
 
 ```puppet
 # Example excerpt — node 'app01.dev1.ctb.internal'

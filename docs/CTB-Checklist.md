@@ -2,21 +2,21 @@
 
 **Project:** CTB (Swiss Bank Project) — Server Migration
 **Owner:** Sagarika
-**Last Updated:** 2026-04-25
-**Total items:** 16
+**Last Updated:** 2026-07-04
+**Total items:** 19
 
 ---
 
 ## 📊 Progress Dashboard
 
 ```
-Overall Progress  ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  0/16  (0%)
+Overall Progress  ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  0/19  (0%)
 
 ┌─────────────────────────────────────────────────────────┐
-│ Phase 1 — Onboarding         ▱▱▱▱  0/4   ⬜⬜⬜⬜       │
-│ Phase 2 — Build & Auth       ▱▱▱   0/3   ⬜⬜⬜          │
-│ Phase 3 — Pipeline           ▱▱▱▱  0/4   ⬜⬜⬜⬜       │
-│ Phase 4 — Deploy & Integrate ▱▱▱▱▱ 0/5   ⬜⬜⬜⬜⬜    │
+│ Phase 1 — Onboarding         ▱▱▱▱    0/4   ⬜⬜⬜⬜      │
+│ Phase 2 — Build & Auth       ▱▱▱     0/3   ⬜⬜⬜        │
+│ Phase 3 — Pipeline           ▱▱▱▱▱   0/5   ⬜⬜⬜⬜⬜    │
+│ Phase 4 — Deploy & Integrate ▱▱▱▱▱▱▱ 0/7   ⬜⬜⬜⬜⬜⬜⬜│
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -24,9 +24,9 @@ Overall Progress  ▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  0/16  (0%)
 |---|---|---|---|---|
 | 1️⃣ Onboarding | 4 | 0 | 0 | 0 |
 | 2️⃣ Build & Auth | 3 | 0 | 0 | 0 |
-| 3️⃣ Pipeline | 4 | 0 | 0 | 0 |
-| 4️⃣ Deploy & Integrate | 5 | 0 | 0 | 0 |
-| **Total** | **16** | **0** | **0** | **0** |
+| 3️⃣ Pipeline | 5 | 0 | 0 | 0 |
+| 4️⃣ Deploy & Integrate | 7 | 0 | 0 | 0 |
+| **Total** | **19** | **0** | **0** | **0** |
 
 ---
 
@@ -47,20 +47,23 @@ gantt
     section Phase 2 — Build & Auth
     Local build & package      :b1, after a3, 5d
     Auth code changes          :b2, after a4, 10d
-    AGS / GSR request          :b3, after a4, 7d
+    ACG / GSR + IIS app pool   :b3, after a4, 7d
 
     section Phase 3 — Pipeline
     Create pipeline            :c1, after b1, 5d
     Pipeline + Puppet setup    :c2, after c1, 7d
-    Build & publish to Nexus   :c3, after c2, 5d
-    DNS & SSL for API          :c4, after c2, 5d
+    Puppet module content rules:c3, after c2, 2d
+    Build & publish to Nexus   :c4, after c2, 5d
+    DNS & SSL (fingerprint)    :c5, after c2, 5d
 
     section Phase 4 — Deploy & Integrate
-    Dev1 connect (agent)       :d1, after c3, 3d
-    Deploy to Dev1             :d2, after d1, 3d
-    Nexus auto-resolve         :d3, after d2, 2d
-    ADT config                 :d4, after d2, 3d
-    MERS implementation        :d5, after d4, 5d
+    Artifact reg + agent (Dev1):d1, after c4, 3d
+    Manual deploy (app+puppet) :d2, after d1, 2d
+    Deploy to Dev1             :d3, after d2, 3d
+    Nexus auto-resolve         :d4, after d3, 2d
+    ADT config (Windows app)   :d5, after d3, 3d
+    MERS implementation        :d6, after d5, 7d
+    TE1 server access          :d7, after d3, 5d
 ```
 
 ---
@@ -184,7 +187,7 @@ gantt
 **Acceptance criteria:**
 - [ ] Agnes SDK integrated
 - [ ] Token acquisition tested
-- [ ] AGS validation endpoint called
+- [ ] ACG validation endpoint called
 - [ ] GSR role lookup integrated
 - [ ] Login + logout flows verified end-to-end
 
@@ -192,7 +195,7 @@ gantt
 
 ---
 
-### #6 — AGS / GSR request (CTB)
+### #6 — ACG / GSR request (CTB) — IIS application pool permission
 
 | Field | Value |
 |---|---|
@@ -201,11 +204,13 @@ gantt
 | **Phase** | Build & Auth |
 | **Depends on** | #4 |
 
-**Description:** Submit AGS access group and GSR service request for the CTB application.
+**Description:** Submit ACG access group and GSR service request for the CTB application, including IIS-related application pool permissions for the hosted API.
 
 **Acceptance criteria:**
-- [ ] AGS access group created (`ctb-ubs-users`)
+- [ ] ACG access group created (`ctb-ubs-users`)
 - [ ] GSR service entry registered (`ctb-ubs-api`)
+- [ ] IIS application pool identity granted required permissions
+- [ ] App pool runs under approved service account
 - [ ] Allowed actions per role documented
 - [ ] Test calls return expected scopes
 
@@ -215,7 +220,7 @@ gantt
 
 > **Goal:** stand up CI/CD, publish to Nexus, secure APIs.
 
-### #7 — Creating pipeline
+### #7 — Creating pipeline (build + Nexus upload: snapshot & release)
 
 | Field | Value |
 |---|---|
@@ -224,19 +229,21 @@ gantt
 | **Phase** | Pipeline |
 | **Depends on** | #3 |
 
-**Description:** Create initial Azure / GitLab pipeline definition.
+**Description:** Create initial Azure / GitLab pipeline definition. Pipeline must build the application and upload artifacts to Nexus, with both **snapshot** and **release** uploads passing.
 
 **Acceptance criteria:**
 - [ ] `azure-pipelines.yml` checked in
 - [ ] `.gitlab-ci.yml` checked in
 - [ ] Build agent pool registered
 - [ ] First green build on `develop`
+- [ ] Nexus **snapshot** upload passed
+- [ ] Nexus **release** upload passed
 
 📖 See [Pipeline-Guide.md](./Pipeline-Guide.md).
 
 ---
 
-### #9 — Pipeline setup (Application + Puppet for server config)
+### #9 — Pipeline setup (Application setup + Puppet module for server config)
 
 | Field | Value |
 |---|---|
@@ -245,17 +252,38 @@ gantt
 | **Phase** | Pipeline |
 | **Depends on** | #7 |
 
-**Description:** Integrate Puppet manifests into the pipeline so server config is deployed alongside the application.
+**Description:** Set up the application in the pipeline and create the Puppet module used for server configuration, so server config is deployed alongside the application.
 
 **Acceptance criteria:**
-- [ ] Puppet manifest repo created (`ctb-ubs-puppet`)
-- [ ] Pipeline applies manifests to Dev1
+- [ ] Application set up in pipeline
+- [ ] Puppet module repo created (`ctb-ubs-puppet`)
+- [ ] Pipeline applies Puppet module to Dev1
 - [ ] Drift detection enabled
 - [ ] Rollback verified
 
 ---
 
-### #10 — Build in pipeline, publish for Nexus
+### #10 — Puppet module content rules (exclude services, .cs files, .sln paths)
+
+| Field | Value |
+|---|---|
+| **Status** | ⬜ Pending |
+| **Owner** | Sagarika |
+| **Phase** | Pipeline |
+| **Depends on** | #9 |
+
+**Description:** During Puppet module creation, do **not** upload application services, `.cs` source files, or other `.sln` solution paths into the module. The Puppet module must contain server configuration only — application binaries come from Nexus.
+
+**Acceptance criteria:**
+- [ ] Puppet module contains config/manifests only
+- [ ] No `Services` folders included in module
+- [ ] No `.cs` source files included in module
+- [ ] No `.sln` / solution-relative paths included in module
+- [ ] Module review confirms clean separation (config vs. app artifacts)
+
+---
+
+### #11 — Build in pipeline, publish for Nexus
 
 | Field | Value |
 |---|---|
@@ -274,7 +302,7 @@ gantt
 
 ---
 
-### #11 — DNS and SSL certification for API
+### #12 — DNS and SSL certification for API (fingerprint required)
 
 | Field | Value |
 |---|---|
@@ -283,68 +311,88 @@ gantt
 | **Phase** | Pipeline |
 | **Depends on** | #9 |
 
-**Description:** Register DNS and obtain SSL certificate for the API endpoint.
+**Description:** Register DNS and obtain SSL certificate for the API endpoint. The certificate **fingerprint (thumbprint)** is required for binding/config registration.
 
 **Acceptance criteria:**
 - [ ] DNS entry `api.dev1.ctb.internal` created
 - [ ] SSL certificate issued by enterprise CA
-- [ ] Cert installed on Dev1 web tier
+- [ ] Certificate fingerprint (thumbprint) captured and registered in config
+- [ ] Cert installed on Dev1 web tier and bound in IIS
 - [ ] HTTPS handshake succeeds (TLS 1.2+)
 
 ---
 
 ## 4️⃣ Phase 4 — Deploy & Integrate
 
-> **Goal:** deploy to Dev1, integrate ADT and MERS.
+> **Goal:** deploy to Dev1, integrate ADT and MERS, extend access to TE1.
 
-### #12 — Dev1 server connect (Artifact registration, Agent user installation)
+### #13 — Artifact registration & agent installation (Dev1 server deployment)
 
 | Field | Value |
 |---|---|
 | **Status** | ⬜ Pending |
 | **Owner** | Sagarika |
 | **Phase** | Deploy & Integrate |
-| **Depends on** | #8, #10 |
+| **Depends on** | #8, #11 |
 
-**Description:** Connect Dev1 to the pipeline — register artifact source, install build agent.
+**Description:** Connect Dev1 to the pipeline — register the artifact, install the deployment agent on the Dev1 server.
 
 **Acceptance criteria:**
+- [ ] Artifact registered (Nexus URL / source configured)
 - [ ] Pipeline agent installed on Dev1
 - [ ] Agent user has required permissions
-- [ ] Artifact source registered (Nexus URL configured)
 - [ ] Test job runs successfully on Dev1 agent
 
 ---
 
-### #13 — Deploy in Dev1
+### #14 — Manual deploy (application files + Puppet module)
 
 | Field | Value |
 |---|---|
 | **Status** | ⬜ Pending |
 | **Owner** | Sagarika |
 | **Phase** | Deploy & Integrate |
-| **Depends on** | #11, #12 |
+| **Depends on** | #10, #13 |
 
-**Description:** Execute first end-to-end deployment to Dev1.
+**Description:** Deploy the application files and the Puppet module **manually** to validate the deployment path before automating it.
 
 **Acceptance criteria:**
-- [ ] Application installed via MSI
-- [ ] Service starts cleanly
-- [ ] Smoke test (health endpoint) passes
-- [ ] Logs visible in MERS
+- [ ] Application files copied/deployed manually to Dev1
+- [ ] Puppet module applied manually on Dev1
+- [ ] Server configuration verified after manual Puppet run
+- [ ] Manual steps documented for the runbook
 
 ---
 
-### #14 — Automatically showing Nexus repository
+### #15 — Deploy in Dev1 (application file deploy)
 
 | Field | Value |
 |---|---|
 | **Status** | ⬜ Pending |
 | **Owner** | Sagarika |
 | **Phase** | Deploy & Integrate |
-| **Depends on** | #13 |
+| **Depends on** | #12, #14 |
 
-**Description:** Verify Dev1 auto-resolves and pulls artifacts from Nexus on each deployment.
+**Description:** Execute first end-to-end deployment to Dev1 through the pipeline.
+
+**Acceptance criteria:**
+- [ ] Application files deployed via pipeline
+- [ ] Service starts cleanly
+- [ ] Smoke test (health endpoint) passes
+- [ ] Logs visible in MERS / Grafana
+
+---
+
+### #16 — Automatically showing Nexus repository
+
+| Field | Value |
+|---|---|
+| **Status** | ⬜ Pending |
+| **Owner** | Sagarika |
+| **Phase** | Deploy & Integrate |
+| **Depends on** | #15 |
+
+**Description:** Verify Dev1 auto-resolves and pulls artifacts from Nexus on each deployment — the Nexus repository shows up automatically after pipeline publish.
 
 **Acceptance criteria:**
 - [ ] Nexus repository visible in deployment dashboard
@@ -353,41 +401,79 @@ gantt
 
 ---
 
-### #15 — ADT config
+### #17 — ADT config for Windows app
 
 | Field | Value |
 |---|---|
 | **Status** | ⬜ Pending |
 | **Owner** | Sagarika |
 | **Phase** | Deploy & Integrate |
-| **Depends on** | #13 |
+| **Depends on** | #15 |
 
-**Description:** Configure ADT (Application Deployment Tool) for the migrated application.
+**Description:** Configure ADT (Application Deployment Tool) for the migrated **Windows application**.
 
 **Acceptance criteria:**
-- [ ] ADT application record created
-- [ ] Environment mapping defined (Dev1, SIT, UAT, PROD)
+- [ ] ADT application record created for the Windows app
+- [ ] Environment mapping defined (Dev1, TE1, SIT, UAT, PROD)
 - [ ] Deployment hooks register from pipeline
 - [ ] ADT dashboard reflects last deployment
 
 ---
 
-### #16 — MERS implementation
+### #18 — MERS implementation
 
 | Field | Value |
 |---|---|
 | **Status** | ⬜ Pending |
 | **Owner** | Sagarika |
 | **Phase** | Deploy & Integrate |
-| **Depends on** | #13 |
+| **Depends on** | #15 |
 
-**Description:** Integrate MERS (Monitoring / Event / Reporting System) for the application.
+**Description:** Integrate MERS monitoring for the application across four workstreams: OpenTelemetry onboarding, Grafana alerting via Big Panda, CID-5 label validation, and token-based authentication.
+
+#### 18.1 — OpenTelemetry (request via BBS)
+
+- [ ] MERS onboarding request raised through **BBS**
+- [ ] OpenTelemetry instrumentation added to the application
+- [ ] **MERS EM1 → Grafana** used for logs
+- [ ] Grafana dashboards show IIS details, CPU, and disk metrics
+
+#### 18.2 — Alerting (request via Big Panda)
+
+- [ ] Alert request raised through **Big Panda** for Grafana alerts
+- [ ] Alert rules configured (5xx errors, deploy failures, CPU/disk thresholds)
+- [ ] Alert routing verified end-to-end
+
+#### 18.3 — CID-5 label validation
+
+- [ ] **CID-5** MERS implementation completed for label validation
+- [ ] Labels validated against CID-5 requirements
+- [ ] Validation results signed off
+
+#### 18.4 — Authentication (token creation, app team side)
+
+- [ ] MERS auth token created on the application team side
+- [ ] Token stored securely (vault / pipeline secret, never in code)
+- [ ] Authenticated telemetry flow verified
+
+---
+
+### #19 — TE1 server access for deployment
+
+| Field | Value |
+|---|---|
+| **Status** | ⬜ Pending |
+| **Owner** | Sagarika |
+| **Phase** | Deploy & Integrate |
+| **Depends on** | #15 |
+
+**Description:** Request and provision access to the **TE1** server so deployments can be promoted beyond Dev1.
 
 **Acceptance criteria:**
-- [ ] Application emits events to MERS
-- [ ] Pipeline emits build/deploy events to MERS
-- [ ] Dashboards configured for app + pipeline metrics
-- [ ] Alert rules tuned (5xx errors, deploy failures)
+- [ ] TE1 access request raised
+- [ ] TE1 server reachable (login verified)
+- [ ] Deployment agent / permissions in place on TE1
+- [ ] Test deployment to TE1 succeeds
 
 ---
 

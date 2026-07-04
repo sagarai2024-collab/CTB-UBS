@@ -41,7 +41,7 @@ The migration follows a strict **Cut-To-Build (CTB)** lifecycle: every change fl
 | Goal | Outcome |
 |---|---|
 | 🏗️ Re-architect monolith → 3-tier | Presentation / Business / Data layers cleanly separated (DD2) |
-| 🔐 Strengthen Auth | Replace legacy auth with Agnes / AGS / GSR |
+| 🔐 Strengthen Auth | Replace legacy auth with Agnes / ACG / GSR |
 | 🚀 Automate delivery | Zero-touch build → publish → deploy via Azure / GitLab pipelines |
 | 📦 Centralise artifacts | All builds published to enterprise Nexus repository |
 | 🔒 Secure APIs | All API endpoints behind enterprise DNS + SSL certificates |
@@ -65,7 +65,7 @@ flowchart TB
 
     subgraph Tier2["⚙️ Business Logic Tier"]
         BL[Business Services]
-        AUTH[Auth Service<br/>Agnes / AGS / GSR]
+        AUTH[Auth Service<br/>Agnes / ACG / GSR]
     end
 
     subgraph Tier3["💾 Data Tier"]
@@ -135,13 +135,13 @@ flowchart TB
 </tr>
 <tr>
 <td>🔐 Identity</td>
-<td>Agnes · AGS · GSR</td>
+<td>Agnes · ACG · GSR</td>
 <td>Authentication & authorization</td>
 </tr>
 <tr>
 <td>📊 Monitoring</td>
-<td>MERS</td>
-<td>Application telemetry</td>
+<td>MERS (EM1) · OpenTelemetry · Grafana · Big Panda</td>
+<td>Logs, IIS/CPU/disk metrics, alerting</td>
 </tr>
 <tr>
 <td>🚀 Deployment</td>
@@ -169,7 +169,7 @@ CTB-UBS/
 ├── 📄 .gitlab-ci.yml               ← GitLab CI pipeline definition
 ├── 📄 .gitignore
 └── 📁 docs/
-    ├── 📄 CTB-Checklist.md         ← 16 CTB work items tracker
+    ├── 📄 CTB-Checklist.md         ← 19 CTB work items tracker
     ├── 📄 Architecture.md          ← DD2 three-tier design details
     └── 📄 Pipeline-Guide.md        ← CI/CD setup & troubleshooting
 ```
@@ -223,6 +223,7 @@ flowchart LR
 | Environment | Purpose | Server | Status |
 |---|---|---|---|
 | 🟡 **Dev1** | Active development & integration | `dev1.ctb.internal` | 🟢 Active |
+| 🟡 **TE1** | Test environment (deployment target) | `te1.ctb.internal` | ⏳ Access requested |
 | ⚪ **SIT** | System integration testing | `sit.ctb.internal` | ⏳ Planned |
 | ⚪ **UAT** | User acceptance testing | `uat.ctb.internal` | ⏳ Planned |
 | ⚪ **PROD** | Production | `prod.ctb.internal` | 🔒 Restricted |
@@ -239,8 +240,9 @@ flowchart LR
 ✓ Git 2.40+
 ✓ Access to CTB repository (item #1)
 ✓ Agnes role profile (item #4)
-✓ AGS / GSR approval (item #6)
+✓ ACG / GSR approval + IIS app pool permission (item #6)
 ✓ Dev server access (item #8)
+✓ TE1 server access for deployment (item #19)
 ```
 
 ### Local Build (Maven / Java)
@@ -290,21 +292,21 @@ az pipelines create --name CTB-UBS-Build --yml-path azure-pipelines.yml
 
 ## ✅ CTB Work Items
 
-Progress: **0 / 16** complete · See [full checklist →](./docs/CTB-Checklist.md)
+Progress: **0 / 19** complete · See [full checklist →](./docs/CTB-Checklist.md)
 
 ```
 Phase 1 — Onboarding         ▱▱▱▱▱  0/4   ⬜⬜⬜⬜
-Phase 2 — Build & Auth       ▱▱▱▱▱  0/4   ⬜⬜⬜⬜
-Phase 3 — Pipeline           ▱▱▱▱▱  0/4   ⬜⬜⬜⬜
-Phase 4 — Deploy & Integrate ▱▱▱▱▱  0/4   ⬜⬜⬜⬜
+Phase 2 — Build & Auth       ▱▱▱▱▱  0/3   ⬜⬜⬜
+Phase 3 — Pipeline           ▱▱▱▱▱  0/5   ⬜⬜⬜⬜⬜
+Phase 4 — Deploy & Integrate ▱▱▱▱▱  0/7   ⬜⬜⬜⬜⬜⬜⬜
 ```
 
 | Phase | Items | Description |
 |---|---|---|
 | 1️⃣ Onboarding | #1, #2, #4, #8 | Repo + Dev server access, DD2 design, Agnes profiles |
-| 2️⃣ Build & Auth | #3, #5, #6 | Local build, auth changes, AGS/GSR |
-| 3️⃣ Pipeline | #7, #9, #10, #11 | Pipeline create, Puppet, Nexus, DNS/SSL |
-| 4️⃣ Deploy & Integrate | #12, #13, #14, #15, #16 | Dev1 deploy, Nexus auto-resolve, ADT, MERS |
+| 2️⃣ Build & Auth | #3, #5, #6 | Local build, auth changes, ACG/GSR + IIS app pool |
+| 3️⃣ Pipeline | #7, #9, #10, #11, #12 | Pipeline create, Puppet module (config only), Nexus, DNS/SSL fingerprint |
+| 4️⃣ Deploy & Integrate | #13, #14, #15, #16, #17, #18, #19 | Dev1 deploy (manual → pipeline), Nexus auto-resolve, ADT, MERS, TE1 access |
 
 ---
 
